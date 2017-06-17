@@ -11,8 +11,8 @@ NUM_ACTIONS = 4
 
 graph = tf.Graph()
 with graph.as_default():
-  network0 = a3c.a3c_network(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
-  network1 = a3c.a3c_network(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 1)
+  network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
+  network1 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 1)
   networks = [network0, network1]
 
 if __name__ == '__main__':

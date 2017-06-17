@@ -23,7 +23,7 @@
 import tensorflow as tf
 import numpy as np
 
-class a3c_network:
+class A3CNetwork:
   def __init__(self, image_height, image_width, num_channels, num_actions, thread_id, device='/cpu:0'):
     scope_name = "a3c_network_%d" % thread_id
     with tf.variable_scope(scope_name):
