@@ -1,0 +1,6 @@
+# ignore pyc
+*.pyc
+
+# avoid adding swap files
+*.swo
+*.swp
