@@ -26,9 +26,9 @@ import numpy as np
 import cv2
 
 
-class AleInterface(Environment):
+class AleEnvironment(Environment):
   def __init__(self, rom_name, record_display=True):
-    super(AleInterface, self).__init__()
+    super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.record_display = record_display
 

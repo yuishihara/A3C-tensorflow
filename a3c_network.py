@@ -23,7 +23,7 @@
 import tensorflow as tf
 import numpy as np
 
-class A3CNetwork:
+class A3CNetwork(object):
   def __init__(self, image_height, image_width, num_channels, num_actions, thread_id, device='/cpu:0'):
     scope_name = "a3c_network_%d" % thread_id
     with tf.variable_scope(scope_name):
@@ -57,6 +57,9 @@ class A3CNetwork:
       self.critic_output = 1
       self.critic_weights, self.critic_biases = self.create_inner_net([self.critic_inputs, self.critic_output], "critic_inner")
 
+    self.image_height = image_height
+    self.image_width = image_width
+    self.num_channels = num_channels
     self.device = device
 
 
@@ -64,29 +67,28 @@ class A3CNetwork:
     with tf.device(self.device):
       conv1 = tf.nn.conv2d(data, self.conv1_weights, [1, self.conv1_stride, self.conv1_stride, 1], padding='VALID')
       conv1 = tf.nn.relu(conv1 + self.conv1_biases)
-      conv2 = tf.nn.conv2d(data, self.conv2_weights, [1, self.conv2_stride, self.conv2_stride, 1], padding='VALID')
-      conv2 = tf.nn.relu(conv1 + self.conv2_biases)
+      conv2 = tf.nn.conv2d(conv1, self.conv2_weights, [1, self.conv2_stride, self.conv2_stride, 1], padding='VALID')
+      conv2 = tf.nn.relu(conv2 + self.conv2_biases)
       conv2_shape = conv2.get_shape().as_list()
-      inner1 = tf.reshape(conv3, [conv2_shape[0], conv2_shape[1] * conv2_shape[2] * conv2_shape[3]])
+      inner1 = tf.reshape(conv2, [-1, conv2_shape[1] * conv2_shape[2] * conv2_shape[3]])
       inner1 = tf.matmul(inner1, self.inner1_weights) + self.inner1_biases
       return tf.nn.relu(inner1)
 
 
   def pi(self, data):
     with tf.device(self.device):
-      common_layer_outputs = common_layer(data, device)
+      common_layer_outputs = self.common_layer(data)
       return tf.nn.softmax(tf.matmul(common_layer_outputs, self.actor_weights) + self.actor_biases)
 
 
   def value(self, data):
     with tf.device(self.device):
-      common_layer_outputs = common_layer(data, device)
-      value = tf.matmul(common_layer_outputs, self.critic_weights) + self.critic_biases
-      return tf.reshape(value)
+      common_layer_outputs = self.common_layer(data)
+      return tf.matmul(common_layer_outputs, self.critic_weights) + self.critic_biases
 
 
   def pi_and_value(self, data):
-      return pi(data, device), value(data, device)
+      return self.pi(data), self.value(data)
 
 
   def weights_and_biases(self):
@@ -95,6 +97,18 @@ class A3CNetwork:
             self.inner1_weights, self.inner1_biases,
             self.actor_weights, self.actor_biases,
             self.critic_weights, self.critic_biases]
+
+
+  def input_shape(self):
+    return (self.image_width, self.image_height, self.num_channels)
+
+
+  def actor_output_shape(self):
+    return tuple([self.actor_outputs])
+
+
+  def critic_output_shape(self):
+    return tuple([self.critic_output])
 
 
   def create_conv_net(self, shape, name):
