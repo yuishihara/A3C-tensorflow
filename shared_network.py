@@ -10,13 +10,18 @@ class SharedNetwork(A3CNetwork):
       self.eta = 7e-4
       self.alpha = 0.99
       self.epsilon = 0.1
-      self.optimizer = self.prepare_optimizer()
       self.shared_counter = self.prepare_shared_counter()
+      self.learning_rate = self.learning_rate()
+      self.optimizer = self.prepare_optimizer(self.learning_rate)
 
 
-  def prepare_optimizer(self):
+  def prepare_optimizer(self, learning_rate):
     with tf.device(self.device):
-      return tf.train.RMSPropOptimizer(self.eta, self.alpha, self.epsilon, name="shared_optimizer")
+      return tf.train.RMSPropOptimizer(learning_rate, self.alpha, self.epsilon, name="shared_optimizer")
+
+
+  def learning_rate(self):
+    return self.eta * (1.0 - float(self.shared_counter) / 1e9)
 
 
   def prepare_shared_counter(self):

@@ -2,21 +2,20 @@ import numpy as np
 import tensorflow as tf
 import threading
 
-import signal
-
 class ActorLearnerThread(threading.Thread):
-  def __init__(self, session, environment, shared_network, local_network, thread_id, device='/cpu:0'):
+  def __init__(self, session, environment, shared_network, local_network, global_t_max, thread_id, device='/cpu:0'):
     super(ActorLearnerThread, self).__init__()
     self.session = session
-    self.t_max = 10
+    self.global_t_max = global_t_max
+    self.local_t_max = 5
     self.shared_network = shared_network
     self.local_network = local_network
     self.t = 1
     self.t_start = self.t
-    self.stop = False
     self.image_width = local_network.input_shape()[0]
     self.image_height = local_network.input_shape()[1]
     self.num_channels = local_network.input_shape()[2]
+    self.loop_listener = None
     self.skip_num = 4
     self.eps = 1e-10
     self.beta = 0.01
@@ -24,6 +23,7 @@ class ActorLearnerThread(threading.Thread):
     self.grad_clip = 40
     self.saver = tf.train.Saver({var.name: var for var in self.local_network.weights_and_biases()})
     self.device = device
+    self.thread_id = thread_id
 
     self.environment = environment
 
@@ -37,9 +37,7 @@ class ActorLearnerThread(threading.Thread):
     total_loss = self.policy_loss + self.value_loss * 0.5
     self.accum_local_grads_ops = self.prepare_accum_local_gradients_ops(self.local_grads, total_loss, thread_id)
     self.apply_grads = self.prepare_apply_gradients(self.local_grads)
-
-    # Signal handler for handling interrupt by Ctrl-C
-    signal.signal(signal.SIGINT, self.signal_handler)
+    self.sync_operations = self.prepare_sync_ops(self.shared_network, self.local_network)
 
 
   def prepare_placeholders(self, thread_id):
@@ -134,19 +132,34 @@ class ActorLearnerThread(threading.Thread):
     return apply_grads
 
 
+  def prepare_sync_ops(self, origin, target):
+    copy_operations = [target.assign(origin)
+        for origin, target in zip(origin.weights_and_biases(), target.weights_and_biases())]
+    return copy_operations
+
+
   def run(self):
     available_actions = self.environment.available_actions()
-    while tf.train.global_step(self.session, self.shared_network.shared_counter) < self.t_max \
-        and self.stop == False:
-      self.reset_gradients()
-      self.sync_network_parameters(self.shared_network, self.local_network)
-      self.t_start = self.t
-      initial_state = self.get_initial_state()
+    self.environment.reset()
+    update_times = 1
+    while self.get_global_step() < self.global_t_max:
+      if self.thread_id == 0:
+        print 'thread_id: %d, learning_rate: %f' % (self.thread_id, self.session.run(self.shared_network.learning_rate))
+        print 'global_step %d' % self.session.run(self.shared_network.shared_counter)
 
-      self.environment.reset()
+      self.reset_gradients()
+      self.synchronize_network()
+      self.t_start = self.t
+      initial_state = self.get_initial_state(self.environment)
+
+      if self.loop_listener is not None:
+        self.loop_listener(self, update_times)
+
       history, last_state = self.play_game(initial_state)
 
       if last_state is None:
+        # print 'thread_id: %d is now resetting' % self.thread_id
+        self.environment.reset()
         r = 0
       else:
         r = self.session.run(self.value, feed_dict={self.state_input : [last_state]})[0][0]
@@ -166,6 +179,19 @@ class ActorLearnerThread(threading.Thread):
       self.accumulate_gradients(states_batch, action_batch, reward_batch)
 
       self.update_shared_gradients()
+      update_times += 1
+
+
+  def test_run(self, environment, trials):
+    rewards = []
+    for i in range(trials):
+      initial_state = self.get_initial_state(environment)
+      print 'test play trial: %d started!!' % i
+      reward = self.test_play_game(environment, initial_state)
+      print 'test play trial: %d finished. total reward: %d' % (i, reward)
+      rewards.append(reward)
+      environment.reset()
+    return rewards
 
 
   def extract_history(self, history):
@@ -176,44 +202,19 @@ class ActorLearnerThread(threading.Thread):
     return state, action, reward
 
 
-  def get_initial_state(self):
-    initial_state = []
-    available_actions = self.environment.available_actions()
-    while True:
-      next_screen = None
-      for i in range(self.skip_num):
-        action = self.select_random_action_from(available_actions)
-        reward, next_screen = self.environment.act(action)
-
-      initial_state.append(next_screen)
-      if len(initial_state) is self.num_channels:
-        break
-    return initial_state
-
-
-  def sync_network_parameters(self, origin, target):
-    copy_operations = [target.assign(origin)
-        for origin, target in zip(origin.weights_and_biases(), target.weights_and_biases())]
-    self.session.run(copy_operations)
-
-
   def play_game(self, initial_state):
     history = []
     state = np.stack(initial_state, axis=-1)
     next_state = state
     next_screen = None
-    action = 0
-    reward = 0
     available_actions = self.environment.available_actions()
-    while self.environment.is_end_state() == False and (self.t - self.t_start) != self.t_max:
+    while self.environment.is_end_state() == False and (self.t - self.t_start) != self.local_t_max:
       state = next_state
       probabilities = self.session.run(self.pi, feed_dict={self.state_input : [state]})
       action = self.select_action_with(available_actions, probabilities[0])
 
-      reward += 0.0
-      for i in range(self.skip_num):
-        intermediate_reward, next_screen = self.environment.act(action)
-        reward += np.clip([intermediate_reward], -1, 1)[0]
+      intermediate_reward, next_screen = self.environment.act(action)
+      reward = np.clip([intermediate_reward], -1, 1)[0]
 
       data = {'state':state, 'action':action, 'reward':reward}
       history.append(data)
@@ -227,12 +228,71 @@ class ActorLearnerThread(threading.Thread):
     else:
       last_state = next_state
 
-    print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
+    # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
     return history, last_state
 
 
+  def test_play_game(self, environment, initial_state):
+    total_reward = 0
+    state = np.stack(initial_state, axis=-1)
+    next_state = state
+    next_screen = None
+    available_actions = environment.available_actions()
+    random_action_probability = 0.05
+    action_num = 0
+    random_action_num = 0
+    while environment.is_end_state() == False:
+      state = next_state
+      action = None
+      if random_action_probability < np.random.rand():
+        probabilities = self.session.run(self.pi, feed_dict={self.state_input : [state]})
+        action = self.select_action_with(available_actions, probabilities[0])
+      else:
+        action = self.select_random_action_from(available_actions)
+        random_action_num += 1
+      action_num += 1
+
+      intermediate_reward, next_screen = environment.act(action)
+      reward = np.clip([intermediate_reward], -1, 1)[0]
+      total_reward += reward
+
+      next_screen = np.reshape(next_screen, (self.image_width, self.image_height, 1))
+      next_state = np.append(state[:, :, 1:], next_screen, axis=-1)
+    print 'random action probability %f' % (float(random_action_num) / float(action_num))
+
+    return total_reward
+
+
+  def get_initial_state(self, environment):
+    initial_state = []
+    available_actions = environment.available_actions()
+
+    random_action_num = int(np.random.rand() * 30)
+    for i in range(random_action_num):
+      if environment.is_end_state():
+        self.environment.reset()
+      environment.act(0)
+
+    while True:
+      if environment.is_end_state():
+        self.environment.reset()
+        initial_state = []
+
+      next_screen = None
+      action = self.select_random_action_from(available_actions)
+      reward, next_screen = environment.act(action)
+
+      initial_state.append(next_screen)
+      if len(initial_state) is self.num_channels \
+          and not environment.is_end_state():
+        break
+
+    assert np.shape(initial_state) == (self.num_channels, self.image_height, self.image_width)
+    return initial_state
+
+
   def synchronize_network(self):
-    self.sync_network_parameters(self.shared_network, self.local_network)
+    self.session.run(self.sync_operations)
 
 
   def accumulate_gradients(self, state, action, r):
@@ -252,14 +312,17 @@ class ActorLearnerThread(threading.Thread):
     self.saver.save(self.session, save_path=file_name, global_step=global_step)
 
 
+  def get_global_step(self):
+    return tf.train.global_step(self.session, self.shared_network.shared_counter)
+
+
+  def set_loop_listener(self, listener):
+    self.loop_listener = listener;
+
+
   def select_action_with(self, available_actions, probabilities):
     return np.random.choice(available_actions, p=probabilities)
 
 
   def select_random_action_from(self, available_actions):
     return np.random.choice(available_actions)
-
-
-  def signal_handler(self, signal, frame):
-    self.stop = True
-    print 'Thread interrupted... stopping training'

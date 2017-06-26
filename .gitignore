@@ -4,3 +4,10 @@
 # avoid adding swap files
 *.swo
 *.swp
+
+# avoid log directories
+checkpoint/
+summary/
+
+# ignore ale binaries
+*.bin

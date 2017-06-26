@@ -25,7 +25,7 @@ class A3CTest(tf.test.TestCase):
       shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
       network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
     with self.test_session(graph = graph) as session:
-      test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+      test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
       probabilities = [0.1, 0.2, 0.3, 0.4]
       selected_num = np.zeros(4)
       available_actions = environment.available_actions()
@@ -49,7 +49,7 @@ class A3CTest(tf.test.TestCase):
        shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
        test_thread.reset_gradients()
        self.assertEquals(len(test_thread.local_grads), 10)
        for local_grad in test_thread.local_grads:
@@ -64,9 +64,9 @@ class A3CTest(tf.test.TestCase):
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
        tf.initialize_all_variables().run()
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
        test_thread.reset_gradients()
-       initial_state = test_thread.get_initial_state()
+       initial_state = test_thread.get_initial_state(environment)
        state = np.stack(initial_state, axis=-1)
        probabilities = session.run(test_thread.pi, feed_dict={test_thread.state_input : [state]})
        self.assertTrue(len(probabilities[0]) == test_thread.local_network.actor_outputs)
@@ -80,8 +80,8 @@ class A3CTest(tf.test.TestCase):
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
        tf.initialize_all_variables().run()
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
-       initial_state = test_thread.get_initial_state()
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
+       initial_state = test_thread.get_initial_state(environment)
        state = np.stack(initial_state, axis=-1)
 
        pi = session.run(test_thread.pi, feed_dict={test_thread.state_input : [state, state], test_thread.action_input: [[0, 0, 1, 0], [0, 1, 0, 0]]})
@@ -101,14 +101,14 @@ class A3CTest(tf.test.TestCase):
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
        tf.initialize_all_variables().run()
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
        test_thread.reset_gradients()
-       initial_state = test_thread.get_initial_state()
+       initial_state = test_thread.get_initial_state(environment)
        self.assertEquals(len(initial_state), NUM_CHANNELS)
 
        history, last_state = test_thread.play_game(initial_state)
        if last_state is not None:
-         self.assertEquals(len(history), test_thread.t_max)
+         self.assertEquals(len(history), test_thread.local_t_max)
        self.assertEquals(len(history[0]), 3)
 
 
@@ -120,9 +120,9 @@ class A3CTest(tf.test.TestCase):
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
        tf.initialize_all_variables().run()
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
        test_thread.reset_gradients()
-       initial_state = test_thread.get_initial_state()
+       initial_state = test_thread.get_initial_state(environment)
        self.assertEquals(len(initial_state), NUM_CHANNELS)
 
        history, last_state = test_thread.play_game(initial_state)
@@ -175,16 +175,56 @@ class A3CTest(tf.test.TestCase):
      with graph.as_default():
        shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
        network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
+       network1 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 1)
      with self.test_session(graph = graph) as session:
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
+       test_thread2 = actor_thread.ActorLearnerThread(session, environment, shared_network, network1, 20, 1)
        session.run(tf.initialize_all_variables())
        shared_weight = test_thread.shared_network.weights_and_biases()[0]
        local_weight = test_thread.local_network.weights_and_biases()[0]
+       test_thread.synchronize_network()
        session.run(tf.Print(shared_weight, [shared_weight]))
        session.run(tf.Print(local_weight, [local_weight]))
        test_thread.run()
        session.run(tf.Print(shared_weight, [shared_weight]))
        session.run(tf.Print(local_weight, [local_weight]))
+       assert shared_network.shared_counter.eval() == 10
+
+       test_thread2.run()
+       assert shared_network.shared_counter.eval() == 20
+
+
+  def test_test_run(self):
+     environment = ale.AleEnvironment('breakout.bin', record_display=False)
+     graph = tf.Graph()
+     with graph.as_default():
+       shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
+       network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
+     with self.test_session(graph = graph) as session:
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
+       session.run(tf.initialize_all_variables())
+       trials = 3
+       rewards = test_thread.test_run(environment, trials)
+       assert len(rewards) == trials
+
+
+  def loop_listener(self, thread, counter):
+    assert thread is not None
+    assert 0 <= counter and counter <= 10
+    print 'counter: %d' % counter
+
+
+  def test_loop_listener(self):
+     environment = ale.AleEnvironment('breakout.bin', record_display=False)
+     graph = tf.Graph()
+     with graph.as_default():
+       shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
+       network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
+     with self.test_session(graph = graph) as session:
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
+       test_thread.set_loop_listener(self.loop_listener)
+       session.run(tf.initialize_all_variables())
+       test_thread.run()
 
 
 if __name__ == '__main__':
