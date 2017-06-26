@@ -6,6 +6,7 @@ from constants import NUM_ACTIONS
 import gflags
 import sys
 import os
+import time
 import re
 import numpy as np
 import tensorflow as tf
@@ -29,8 +30,21 @@ def merged_summaries(maximum, median, average):
   return tf.merge_summary([max_summary, med_summary, avg_summary])
 
 
+previous_time = time.time()
+previous_step = 0
 def loop_listener(thread, iteration):
+  global previous_time
+  global previous_step
   ITERATION_PER_EPOCH = 2000
+  current_time = time.time()
+  current_step = thread.get_global_step()
+  elapsed_time = current_time - previous_time
+  steps = (current_step - previous_step) * 20
+  print("itearation: %d, previous step: %d" % (iteration, previous_step))
+  print("### Performance: {} steps in {:.5f} seconds. {:.0f} STEPS/s. {:.2f}M STEPS/hour".format(
+    steps, elapsed_time, steps / elapsed_time, steps / elapsed_time * 3000 / 1000000.))
+  previous_time = current_time
+  previous_step = current_step
   if (iteration % ITERATION_PER_EPOCH) == 0:
     with ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=True, id=100) as environment:
       trials = 10
@@ -87,16 +101,16 @@ if __name__ == '__main__':
     median_input = tf.placeholder(tf.int32)
     average_input = tf.placeholder(tf.int32)
     summary_op = merged_summaries(maximum_input, median_input, average_input)
-    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
+    device = '/gpu:0'
+    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100, device)
     for i in range(FLAGS.threads_num):
-      device = '/gpu:0' if (i == 0) else '/cpu:0'
       network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, i, device)
       networks.append(network)
 
   with tf.Session(graph=graph, config=config) as session:
     threads = []
     for thread_num in range(FLAGS.threads_num):
-      show_display = True if (thread_num == 0) else False
+      show_display = False#True if (thread_num == 0) else False
       environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num)
       thread = actor_thread.ActorLearnerThread(session, environment, shared_network,
           networks[thread_num], FLAGS.global_t_max, thread_num)

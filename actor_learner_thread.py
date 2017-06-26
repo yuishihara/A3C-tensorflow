@@ -7,7 +7,7 @@ class ActorLearnerThread(threading.Thread):
     super(ActorLearnerThread, self).__init__()
     self.session = session
     self.global_t_max = global_t_max
-    self.local_t_max = 5
+    self.local_t_max = 20
     self.shared_network = shared_network
     self.local_network = local_network
     self.t = 1
@@ -59,23 +59,24 @@ class ActorLearnerThread(threading.Thread):
 
 
   def prepare_loss_operations(self, thread_id):
-    scope_name = "thread_%d_operations" % thread_id
-    with tf.name_scope(scope_name):
-      pi, value = self.local_network.pi_and_value(self.state_input)
-      log_pi = tf.log(self.pi + self.eps)
-      entropy = tf.reduce_sum(tf.mul(pi, log_pi), reduction_indices=1, keep_dims=True)
+    with tf.device(self.device):
+      scope_name = "thread_%d_operations" % thread_id
+      with tf.name_scope(scope_name):
+        pi, value = self.local_network.pi_and_value(self.state_input)
+        log_pi = tf.log(self.pi + self.eps)
+        entropy = tf.reduce_sum(tf.mul(pi, log_pi), reduction_indices=1, keep_dims=True)
 
-      pi_a_s = tf.reduce_sum(tf.mul(pi, self.action_input), reduction_indices=1, keep_dims=True)
-      log_pi_a_s = tf.log(pi_a_s)
+        pi_a_s = tf.reduce_sum(tf.mul(pi, self.action_input), reduction_indices=1, keep_dims=True)
+        log_pi_a_s = tf.log(pi_a_s)
 
-      advantage = self.reward_input - value
+        advantage = self.reward_input - value
 
-      # log_pi_a_s * advantage. This multiplication is bigger then better
-      # append minus to use gradient descent as gradient ascent
-      policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) + tf.reduce_sum(entropy * self.beta)
-      value_loss = tf.reduce_sum(tf.square(advantage))
+        # log_pi_a_s * advantage. This multiplication is bigger then better
+        # append minus to use gradient descent as gradient ascent
+        policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) + tf.reduce_sum(entropy * self.beta)
+        value_loss = tf.reduce_sum(tf.square(advantage))
 
-      return policy_loss, value_loss
+        return policy_loss, value_loss
 
 
   def prepare_local_gradients(self, thread_id):
@@ -125,17 +126,19 @@ class ActorLearnerThread(threading.Thread):
 
 
   def prepare_apply_gradients(self, local_grads):
-    clipped_grads = [tf.clip_by_value(grad, -self.grad_clip, self.grad_clip) for grad in local_grads]
-    apply_grads = self.shared_network.optimizer.apply_gradients(
-        zip(clipped_grads, self.shared_network.weights_and_biases()),
-        global_step=self.shared_network.shared_counter)
-    return apply_grads
+    with tf.device(self.device):
+      clipped_grads = [tf.clip_by_value(grad, -self.grad_clip, self.grad_clip) for grad in local_grads]
+      apply_grads = self.shared_network.optimizer.apply_gradients(
+          zip(clipped_grads, self.shared_network.weights_and_biases()),
+          global_step=self.shared_network.shared_counter)
+      return apply_grads
 
 
   def prepare_sync_ops(self, origin, target):
-    copy_operations = [target.assign(origin)
-        for origin, target in zip(origin.weights_and_biases(), target.weights_and_biases())]
-    return copy_operations
+    with tf.device(self.device):
+      copy_operations = [target.assign(origin)
+          for origin, target in zip(origin.weights_and_biases(), target.weights_and_biases())]
+      return tf.group(*copy_operations)
 
 
   def run(self):
@@ -145,7 +148,7 @@ class ActorLearnerThread(threading.Thread):
     while self.get_global_step() < self.global_t_max:
       if self.thread_id == 0:
         print 'thread_id: %d, learning_rate: %f' % (self.thread_id, self.session.run(self.shared_network.learning_rate))
-        print 'global_step %d' % self.session.run(self.shared_network.shared_counter)
+        print 'global_step %d' % self.session.run(self.shared_network.shared_counter.ref())
 
       self.reset_gradients()
       self.synchronize_network()
