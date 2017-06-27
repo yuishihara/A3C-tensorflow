@@ -88,7 +88,10 @@ class A3CNetwork(object):
 
 
   def pi_and_value(self, data):
-      return self.pi(data), self.value(data)
+      common_layer_outputs = self.common_layer(data)
+      pi = tf.nn.softmax(tf.matmul(common_layer_outputs, self.actor_weights) + self.actor_biases)
+      value = tf.matmul(common_layer_outputs, self.critic_weights) + self.critic_biases
+      return pi, value
 
 
   def weights_and_biases(self):
