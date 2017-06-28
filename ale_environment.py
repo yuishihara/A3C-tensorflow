@@ -27,7 +27,7 @@ import cv2
 
 
 class AleEnvironment(Environment):
-  def __init__(self, rom_name, record_display=True, show_display=False, id = 0):
+  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.ale.setInt('frame_skip', 3)
@@ -48,6 +48,7 @@ class AleEnvironment(Environment):
     self.actions = self.ale.getMinimalActionSet()
     self.screen_width, self.screen_height = self.ale.getScreenDims()
     self.screen = np.empty((self.screen_height, self.screen_width, 1), dtype=np.uint8)
+    self.shrink = shrink
 
 
   def __enter__(self):
@@ -82,5 +83,11 @@ class AleEnvironment(Environment):
   def preprocess(self, screen):
     if self.show_display:
       cv2.imshow(self.display_name, screen)
-    resized = cv2.resize(screen, (84, 84))
+
+    if self.shrink:
+      resized = cv2.resize(screen, (84, 84))
+    else:
+      resized = cv2.resize(screen, (84, 110))
+      resized = resized[18:102, :]
+
     return resized
