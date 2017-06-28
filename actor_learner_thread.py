@@ -27,14 +27,14 @@ class ActorLearnerThread(threading.Thread):
 
     self.environment = environment
 
-    self.state_input, self.action_input, self.reward_input = self.prepare_placeholders(thread_id)
+    self.state_input, self.action_input, self.reward_input, self.value_input = self.prepare_placeholders(thread_id)
     self.pi = self.local_network.pi(self.state_input)
     self.value = self.local_network.value(self.state_input)
     self.policy_loss, self.value_loss = self.prepare_loss_operations(thread_id)
     self.local_grads = self.prepare_local_gradients(thread_id)
     self.reset_local_grads_ops = self.prepare_reset_local_gradients_ops(self.local_grads, thread_id)
 
-    total_loss = self.policy_loss + self.value_loss * 0.5
+    total_loss = self.policy_loss + self.value_loss
     self.accum_local_grads_ops = self.prepare_accum_local_gradients_ops(self.local_grads, total_loss, thread_id)
     self.apply_grads = self.prepare_apply_gradients(self.local_grads)
     self.sync_operations = self.prepare_sync_ops(self.shared_network, self.local_network)
@@ -55,7 +55,10 @@ class ActorLearnerThread(threading.Thread):
       assert reward_shape == [None, 1]
       reward_input = tf.placeholder(tf.float32, shape=reward_shape, name="reward_input")
 
-      return state_input, action_input, reward_input
+      value_shape=[None, 1]
+      value_input = tf.placeholder(tf.float32, shape=value_shape, name="value_input")
+
+      return state_input, action_input, reward_input, value_input
 
 
   def prepare_loss_operations(self, thread_id):
@@ -69,12 +72,11 @@ class ActorLearnerThread(threading.Thread):
         pi_a_s = tf.reduce_sum(tf.mul(pi, self.action_input), reduction_indices=1, keep_dims=True)
         log_pi_a_s = tf.log(pi_a_s)
 
-        advantage = self.reward_input - value
-
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
+        advantage = self.reward_input - self.value_input
         policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) + tf.reduce_sum(entropy * self.beta)
-        value_loss = tf.reduce_sum(tf.square(advantage))
+        value_loss = tf.reduce_sum(tf.square(self.reward_input - value)) * 0.5
 
         return policy_loss, value_loss
 
@@ -170,16 +172,18 @@ class ActorLearnerThread(threading.Thread):
       states_batch = []
       action_batch = []
       reward_batch = []
+      value_batch = []
       for i in range((self.t - 1) - self.t_start, -1, -1):
         snapshot = history[i]
-        state, action, reward = self.extract_history(snapshot)
+        state, action, reward, value = self.extract_history(snapshot)
 
         r = reward + self.gamma * r
         states_batch.append(state)
         action_batch.append(action)
         reward_batch.append([r])
+        value_batch.append([value])
 
-      self.accumulate_gradients(states_batch, action_batch, reward_batch)
+      self.accumulate_gradients(states_batch, action_batch, reward_batch, value_batch)
 
       self.update_shared_gradients()
       update_times += 1
@@ -202,7 +206,8 @@ class ActorLearnerThread(threading.Thread):
     action = np.zeros(self.local_network.actor_outputs)
     action[history['action']] = 1
     reward = history['reward']
-    return state, action, reward
+    value = history['value']
+    return state, action, reward, value
 
 
   def play_game(self, initial_state):
@@ -213,13 +218,13 @@ class ActorLearnerThread(threading.Thread):
     available_actions = self.environment.available_actions()
     while self.environment.is_end_state() == False and (self.t - self.t_start) != self.local_t_max:
       state = next_state
-      probabilities = self.session.run(self.pi, feed_dict={self.state_input : [state]})
+      probabilities, value = self.session.run(self.pi_and_value, feed_dict={self.state_input : [state]})
       action = self.select_action_with(available_actions, probabilities[0])
 
       intermediate_reward, next_screen = self.environment.act(action)
       reward = np.clip([intermediate_reward], -1, 1)[0]
 
-      data = {'state':state, 'action':action, 'reward':reward}
+      data = {'state':state, 'action':action, 'reward':reward, 'value':value}
       history.append(data)
       next_screen = np.reshape(next_screen, (self.image_width, self.image_height, 1))
       next_state = np.append(state[:, :, 1:], next_screen, axis=-1)
@@ -298,9 +303,12 @@ class ActorLearnerThread(threading.Thread):
     self.session.run(self.sync_operations)
 
 
-  def accumulate_gradients(self, state, action, r):
+  def accumulate_gradients(self, state, action, r, value):
     self.session.run(self.accum_local_grads_ops,
-       feed_dict={self.state_input: state, self.action_input: action, self.reward_input: r})
+        feed_dict={self.state_input: state,
+          self.action_input: action,
+          self.reward_input: r,
+          self.value_input: value})
 
 
   def reset_gradients(self):
