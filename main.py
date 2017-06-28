@@ -21,6 +21,7 @@ gflags.DEFINE_string('checkpoint_dir', 'checkpoint', 'Target checkpoint director
 gflags.DEFINE_string('rom', 'breakout.bin', 'Rom name to play')
 gflags.DEFINE_integer('threads_num', 8, 'Threads to create')
 gflags.DEFINE_integer('global_t_max', 1e9, 'Max steps')
+gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 
 
 def merged_summaries(maximum, median, average):
@@ -101,7 +102,7 @@ if __name__ == '__main__':
     median_input = tf.placeholder(tf.int32)
     average_input = tf.placeholder(tf.int32)
     summary_op = merged_summaries(maximum_input, median_input, average_input)
-    device = '/gpu:0'
+    device = '/gpu:0' if FLAGS.use_gpu else '/cpu:0'
     shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100, device)
     for i in range(FLAGS.threads_num):
       network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, i, device)
@@ -110,7 +111,7 @@ if __name__ == '__main__':
   with tf.Session(graph=graph, config=config) as session:
     threads = []
     for thread_num in range(FLAGS.threads_num):
-      show_display = False#True if (thread_num == 0) else False
+      show_display = True if (thread_num == 0) else False
       environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num)
       thread = actor_thread.ActorLearnerThread(session, environment, shared_network,
           networks[thread_num], FLAGS.global_t_max, thread_num)
