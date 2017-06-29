@@ -65,18 +65,17 @@ class ActorLearnerThread(threading.Thread):
     with tf.device(self.device):
       scope_name = "thread_%d_operations" % thread_id
       with tf.name_scope(scope_name):
-        pi, value = self.local_network.pi_and_value(self.state_input)
         log_pi = tf.log(self.pi + self.eps)
-        entropy = tf.reduce_sum(tf.mul(pi, log_pi), reduction_indices=1, keep_dims=True)
+        entropy = tf.reduce_sum(tf.mul(self.pi, log_pi), reduction_indices=1, keep_dims=True)
 
-        pi_a_s = tf.reduce_sum(tf.mul(pi, self.action_input), reduction_indices=1, keep_dims=True)
+        pi_a_s = tf.reduce_sum(tf.mul(self.pi, self.action_input), reduction_indices=1, keep_dims=True)
         log_pi_a_s = tf.log(pi_a_s)
 
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
         advantage = self.reward_input - self.value_input
         policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) + tf.reduce_sum(entropy * self.beta)
-        value_loss = tf.reduce_sum(tf.square(self.reward_input - value)) * 0.5
+        value_loss = tf.reduce_sum(tf.square(self.reward_input - self.value)) * 0.5
 
         return policy_loss, value_loss
 
@@ -218,13 +217,13 @@ class ActorLearnerThread(threading.Thread):
     available_actions = self.environment.available_actions()
     while self.environment.is_end_state() == False and (self.t - self.t_start) != self.local_t_max:
       state = next_state
-      probabilities, value = self.session.run(self.pi_and_value, feed_dict={self.state_input : [state]})
+      probabilities, value = self.session.run([self.pi, self.value], feed_dict={self.state_input : [state]})
       action = self.select_action_with(available_actions, probabilities[0])
 
       intermediate_reward, next_screen = self.environment.act(action)
       reward = np.clip([intermediate_reward], -1, 1)[0]
 
-      data = {'state':state, 'action':action, 'reward':reward, 'value':value}
+      data = {'state':state, 'action':action, 'reward':reward, 'value':value[0][0]}
       history.append(data)
       next_screen = np.reshape(next_screen, (self.image_width, self.image_height, 1))
       next_state = np.append(state[:, :, 1:], next_screen, axis=-1)
