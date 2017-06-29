@@ -20,7 +20,8 @@ gflags.DEFINE_string('summary_dir', 'summary', 'Target summary directory')
 gflags.DEFINE_string('checkpoint_dir', 'checkpoint', 'Target checkpoint directory')
 gflags.DEFINE_string('rom', 'breakout.bin', 'Rom name to play')
 gflags.DEFINE_integer('threads_num', 8, 'Threads to create')
-gflags.DEFINE_integer('global_t_max', 1e9, 'Max steps')
+gflags.DEFINE_integer('local_t_max', 20, 'batch size to use for training')
+gflags.DEFINE_integer('global_t_max', 1e8, 'Max steps')
 gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
 
@@ -34,33 +35,36 @@ def merged_summaries(maximum, median, average):
 
 previous_time = time.time()
 previous_step = 0
+previous_evaluation_step = 0
 def loop_listener(thread, iteration):
   global previous_time
   global previous_step
-  ITERATION_PER_EPOCH = 2000
+  global previous_evaluation_step
+  STEPS_PER_EPOCH = 1000000
   current_time = time.time()
   current_step = thread.get_global_step()
   elapsed_time = current_time - previous_time
-  steps = (current_step - previous_step) * 20
+  steps = (current_step - previous_step)
   print("itearation: %d, previous step: %d" % (iteration, previous_step))
   print("### Performance: {} steps in {:.5f} seconds. {:.0f} STEPS/s. {:.2f}M STEPS/hour".format(
     steps, elapsed_time, steps / elapsed_time, steps / elapsed_time * 3000 / 1000000.))
   previous_time = current_time
   previous_step = current_step
-  if (iteration % ITERATION_PER_EPOCH) == 0:
-    with ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=True, id=100, shrink=FLAGS.shrink_image) as environment:
+  if STEPS_PER_EPOCH < (current_step - previous_evaluation_step):
+    previous_evaluation_step = current_step
+    with ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=True,
+        id=100, shrink=FLAGS.shrink_image) as environment:
       trials = 10
       rewards = thread.test_run(environment, trials)
       maximum = np.max(rewards)
       median = np.median(rewards)
       average = np.average(rewards)
-      epoch = iteration / ITERATION_PER_EPOCH
+      epoch = current_step / STEPS_PER_EPOCH
       summary_writer.add_summary(session.run(summary_op,
         feed_dict={maximum_input: maximum, median_input: median, average_input: average}),
         epoch)
       print 'test run for epoch: %d. max: %d, med: %d, avg: %f' % (epoch, maximum, median, average)
 
-  if (iteration % ITERATION_PER_EPOCH) == 0:
     step = thread.get_global_step()
     print 'Save network parameters! step: %d' % step
     thread.save_parameters(FLAGS.checkpoint_dir + '/network_parameters', step)
@@ -104,7 +108,8 @@ if __name__ == '__main__':
     average_input = tf.placeholder(tf.int32)
     summary_op = merged_summaries(maximum_input, median_input, average_input)
     device = '/gpu:0' if FLAGS.use_gpu else '/cpu:0'
-    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100, device)
+    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100,
+        FLAGS.local_t_max, FLAGS.global_t_max, device)
     for i in range(FLAGS.threads_num):
       network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, i, device)
       networks.append(network)
@@ -115,7 +120,7 @@ if __name__ == '__main__':
       show_display = True if (thread_num == 0) else False
       environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image)
       thread = actor_thread.ActorLearnerThread(session, environment, shared_network,
-          networks[thread_num], FLAGS.global_t_max, thread_num)
+          networks[thread_num], FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
       thread.daemon = True
       if thread_num == 0:
         thread.set_loop_listener(loop_listener)

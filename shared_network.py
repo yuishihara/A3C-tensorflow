@@ -25,7 +25,7 @@ from a3c_network import A3CNetwork
 import tensorflow as tf
 
 class SharedNetwork(A3CNetwork):
-  def __init__(self, image_height, image_width, num_channels, num_actions, thread_id, device='/cpu:0'):
+  def __init__(self, image_height, image_width, num_channels, num_actions, thread_id, local_t_max, global_t_max, device='/cpu:0'):
     super(SharedNetwork, self).__init__(image_height, image_width, num_channels, num_actions, thread_id, device)
     scope_name = "a3c_network_%d" % thread_id
     with tf.variable_scope(scope_name):
@@ -33,6 +33,8 @@ class SharedNetwork(A3CNetwork):
       self.alpha = 0.99
       self.momentum = 0.0
       self.epsilon = 0.1
+      self.local_t_max = local_t_max
+      self.global_t_max = global_t_max
       self.shared_counter = self.prepare_shared_counter()
       self.learning_rate = self.learning_rate()
       self.optimizer = self.prepare_optimizer(self.learning_rate)
@@ -49,7 +51,7 @@ class SharedNetwork(A3CNetwork):
 
 
   def learning_rate(self):
-    return self.eta * (1.0 - self.shared_counter.ref() / 1e9)
+    return self.eta * (1.0 - self.shared_counter.ref() * self.local_t_max / self.global_t_max)
 
 
   def prepare_shared_counter(self):

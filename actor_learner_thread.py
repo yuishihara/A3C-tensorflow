@@ -3,11 +3,11 @@ import tensorflow as tf
 import threading
 
 class ActorLearnerThread(threading.Thread):
-  def __init__(self, session, environment, shared_network, local_network, global_t_max, thread_id, device='/cpu:0'):
+  def __init__(self, session, environment, shared_network, local_network, local_t_max, global_t_max, thread_id, device='/cpu:0'):
     super(ActorLearnerThread, self).__init__()
     self.session = session
+    self.local_t_max = local_t_max
     self.global_t_max = global_t_max
-    self.local_t_max = 20
     self.shared_network = shared_network
     self.local_network = local_network
     self.t = 1
@@ -245,7 +245,7 @@ class ActorLearnerThread(threading.Thread):
     next_state = state
     next_screen = None
     available_actions = environment.available_actions()
-    random_action_probability = 0.05
+    random_action_probability = 0.01
     action_num = 0
     random_action_num = 0
     while environment.is_end_state() == False:
@@ -259,8 +259,7 @@ class ActorLearnerThread(threading.Thread):
         random_action_num += 1
       action_num += 1
 
-      intermediate_reward, next_screen = environment.act(action)
-      reward = np.clip([intermediate_reward], -1, 1)[0]
+      reward, next_screen = environment.act(action)
       total_reward += reward
 
       next_screen = np.reshape(next_screen, (self.image_width, self.image_height, 1))
@@ -323,7 +322,7 @@ class ActorLearnerThread(threading.Thread):
 
 
   def get_global_step(self):
-    return tf.train.global_step(self.session, self.shared_network.shared_counter)
+    return tf.train.global_step(self.session, self.shared_network.shared_counter) * self.local_t_max
 
 
   def set_loop_listener(self, listener):
