@@ -27,7 +27,7 @@ import cv2
 
 
 class AleEnvironment(Environment):
-  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False):
+  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.ale.setInt('frame_skip', 3)
@@ -35,6 +35,9 @@ class AleEnvironment(Environment):
     self.ale.setFloat('repeat_action_probability', 0.0)
     self.record_display = record_display
     self.show_display = show_display
+    self.life_lost_as_end = life_lost_as_end
+    self.lives_lost = True
+    self.lives = 0
 
     if self.record_display:
       self.ale.setBool('display_screen', True)
@@ -64,15 +67,21 @@ class AleEnvironment(Environment):
     screen = self.ale.getScreenGrayscale(self.screen)
     screen = np.reshape(screen, (self.screen_height, self.screen_width, 1))
     state = self.preprocess(screen)
+    self.lives_lost = True if self.lives > self.ale.lives() else False
+    self.lives = self.ale.lives()
     return reward, state
 
 
   def is_end_state(self):
-    return self.ale.game_over()
+    if self.life_lost_as_end:
+      return self.ale.game_over() or self.lives_lost
+    else:
+      return self.ale.game_over()
 
 
   def reset(self):
-    self.ale.reset_game()
+    if self.ale.game_over():
+      self.ale.reset_game()
 
 
   def available_actions(self):

@@ -24,7 +24,7 @@ gflags.DEFINE_integer('local_t_max', 20, 'batch size to use for training')
 gflags.DEFINE_integer('global_t_max', 1e8, 'Max steps')
 gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
-
+gflags.DEFINE.boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
 
 def merged_summaries(maximum, median, average):
   max_summary = tf.scalar_summary('rewards max', maximum)
@@ -36,6 +36,8 @@ def merged_summaries(maximum, median, average):
 previous_time = time.time()
 previous_step = 0
 previous_evaluation_step = 0
+evaluation_environment = ale.AleEnvironment(FLAGS.rom, record_display=False,
+    show_display=True, id=100, shrink=FLAGS.shrink_image, life_lost_as_end=False)
 def loop_listener(thread, iteration):
   global previous_time
   global previous_step
@@ -52,18 +54,16 @@ def loop_listener(thread, iteration):
   previous_step = current_step
   if STEPS_PER_EPOCH < (current_step - previous_evaluation_step):
     previous_evaluation_step = current_step
-    with ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=True,
-        id=100, shrink=FLAGS.shrink_image) as environment:
-      trials = 10
-      rewards = thread.test_run(environment, trials)
-      maximum = np.max(rewards)
-      median = np.median(rewards)
-      average = np.average(rewards)
-      epoch = current_step / STEPS_PER_EPOCH
-      summary_writer.add_summary(session.run(summary_op,
-        feed_dict={maximum_input: maximum, median_input: median, average_input: average}),
-        epoch)
-      print 'test run for epoch: %d. max: %d, med: %d, avg: %f' % (epoch, maximum, median, average)
+    trials = 10
+    rewards = thread.test_run(evaluation_environment, trials)
+    maximum = np.max(rewards)
+    median = np.median(rewards)
+    average = np.average(rewards)
+    epoch = current_step / STEPS_PER_EPOCH
+    summary_writer.add_summary(session.run(summary_op,
+      feed_dict={maximum_input: maximum, median_input: median, average_input: average}),
+      epoch)
+    print 'test run for epoch: %d. max: %d, med: %d, avg: %f' % (epoch, maximum, median, average)
 
     step = thread.get_global_step()
     print 'Save network parameters! step: %d' % step
