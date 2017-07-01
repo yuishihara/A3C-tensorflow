@@ -6,8 +6,7 @@
 *.swp
 
 # avoid log directories
-checkpoint/
-summary/
+results/
 
 # ignore ale binaries
 *.bin

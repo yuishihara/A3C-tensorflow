@@ -35,9 +35,6 @@ class AleEnvironment(Environment):
     self.ale.setFloat('repeat_action_probability', 0.0)
     self.record_display = record_display
     self.show_display = show_display
-    self.life_lost_as_end = life_lost_as_end
-    self.lives_lost = True
-    self.lives = 0
 
     if self.record_display:
       self.ale.setBool('display_screen', True)
@@ -52,6 +49,9 @@ class AleEnvironment(Environment):
     self.screen_width, self.screen_height = self.ale.getScreenDims()
     self.screen = np.empty((self.screen_height, self.screen_width, 1), dtype=np.uint8)
     self.shrink = shrink
+    self.life_lost_as_end = life_lost_as_end
+    self.lives_lost = False
+    self.lives = self.ale.lives()
 
 
   def __enter__(self):

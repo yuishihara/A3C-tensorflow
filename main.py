@@ -2,6 +2,7 @@ from constants import IMAGE_WIDTH
 from constants import IMAGE_HEIGHT
 from constants import NUM_CHANNELS
 from constants import NUM_ACTIONS
+from constants import RESULT_DIRECTORY_NAME
 
 import gflags
 import sys
@@ -24,7 +25,10 @@ gflags.DEFINE_integer('local_t_max', 20, 'batch size to use for training')
 gflags.DEFINE_integer('global_t_max', 1e8, 'Max steps')
 gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
-gflags.DEFINE.boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
+gflags.DEFINE_boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
+
+checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
+summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
 
 def merged_summaries(maximum, median, average):
   max_summary = tf.scalar_summary('rewards max', maximum)
@@ -42,6 +46,7 @@ def loop_listener(thread, iteration):
   global previous_time
   global previous_step
   global previous_evaluation_step
+  global checkpoint_dir
   STEPS_PER_EPOCH = 1000000
   current_time = time.time()
   current_step = thread.get_global_step()
@@ -67,7 +72,8 @@ def loop_listener(thread, iteration):
 
     step = thread.get_global_step()
     print 'Save network parameters! step: %d' % step
-    thread.save_parameters(FLAGS.checkpoint_dir + '/network_parameters', step)
+
+    thread.save_parameters(checkpoint_dir + '/network_parameters', step)
 
 
 def create_dir_if_not_exist(directory):
@@ -80,23 +86,41 @@ def remove_old_files(directory):
     os.remove(os.path.join(directory, file))
 
 
+def write_training_settings(directory):
+  file_path = os.path.join(directory, "settings.log")
+  with open(file_path, "w") as f:
+    flags = ['rom: ' + str(FLAGS.rom),
+        'threads_num: ' + str(FLAGS.threads_num),
+        'local_t_max: ' + str(FLAGS.local_t_max),
+        'global_t_max: ' + str(FLAGS.global_t_max),
+        'shrink_image: ' + str(FLAGS.shrink_image),
+        'use_gpu: ' + str(FLAGS.use_gpu),
+        'life_lost_as_end: ' + str(FLAGS.life_lost_as_end)]
+    for flag in flags:
+      line = f.write(flag + '\n')
+
+
 if __name__ == '__main__':
   try:
     argv = FLAGS(sys.argv)
   except gflags.FlagsError:
     print 'Incompatible flags were specified'
 
+  os.environ['OMP_NUM_THREADS'] = '1'
+
   graph = tf.Graph()
   config = tf.ConfigProto()
 
   # Output to tensorboard
-  create_dir_if_not_exist(FLAGS.summary_dir)
-  remove_old_files(FLAGS.summary_dir)
-  summary_writer = tf.train.SummaryWriter(FLAGS.summary_dir, graph=graph)
+  create_dir_if_not_exist(summary_dir)
+  remove_old_files(summary_dir)
+  summary_writer = tf.train.SummaryWriter(summary_dir, graph=graph)
 
   # Model parameter saving
-  create_dir_if_not_exist(FLAGS.checkpoint_dir)
-  remove_old_files(FLAGS.checkpoint_dir)
+  create_dir_if_not_exist(checkpoint_dir)
+  remove_old_files(checkpoint_dir)
+
+  write_training_settings(RESULT_DIRECTORY_NAME)
 
   networks = []
   shared_network = None

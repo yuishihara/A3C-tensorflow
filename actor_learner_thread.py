@@ -146,6 +146,7 @@ class ActorLearnerThread(threading.Thread):
     available_actions = self.environment.available_actions()
     self.environment.reset()
     update_times = 1
+    initial_state = []
     while self.get_global_step() < self.global_t_max:
       if self.thread_id == 0:
         print 'thread_id: %d, learning_rate: %f' % (self.thread_id, self.session.run(self.shared_network.learning_rate))
@@ -154,16 +155,19 @@ class ActorLearnerThread(threading.Thread):
       self.reset_gradients()
       self.synchronize_network()
       self.t_start = self.t
-      initial_state = self.get_initial_state(self.environment)
+      if len(initial_state) == 0:
+        initial_state = self.get_initial_state(self.environment)
+      assert np.shape(initial_state) == (84, 84, 4)
 
       if self.loop_listener is not None:
         self.loop_listener(self, update_times)
 
-      history, last_state = self.play_game(initial_state)
+      history, last_state, initial_state = self.play_game(initial_state)
 
       if last_state is None:
         # print 'thread_id: %d is now resetting' % self.thread_id
         self.environment.reset()
+        initial_state = []
         r = 0
       else:
         r = self.session.run(self.value, feed_dict={self.state_input : [last_state]})[0][0]
@@ -192,6 +196,7 @@ class ActorLearnerThread(threading.Thread):
     rewards = []
     for i in range(trials):
       initial_state = self.get_initial_state(environment)
+      assert np.shape(initial_state) == (84, 84, 4)
       print 'test play trial: %d started!!' % i
       reward = self.test_play_game(environment, initial_state)
       print 'test play trial: %d finished. total reward: %d' % (i, reward)
@@ -211,7 +216,7 @@ class ActorLearnerThread(threading.Thread):
 
   def play_game(self, initial_state):
     history = []
-    state = np.stack(initial_state, axis=-1)
+    state = initial_state
     next_state = state
     next_screen = None
     available_actions = self.environment.available_actions()
@@ -236,12 +241,12 @@ class ActorLearnerThread(threading.Thread):
       last_state = next_state
 
     # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
-    return history, last_state
+    return history, last_state, next_state
 
 
   def test_play_game(self, environment, initial_state):
     total_reward = 0
-    state = np.stack(initial_state, axis=-1)
+    state = initial_state
     next_state = state
     next_screen = None
     available_actions = environment.available_actions()
@@ -277,9 +282,14 @@ class ActorLearnerThread(threading.Thread):
     for i in range(random_action_num):
       if environment.is_end_state():
         self.environment.reset()
-      environment.act(0)
+      reward, next_screen = environment.act(0)
+      initial_state.append(next_screen)
 
     while True:
+      if len(initial_state) is self.num_channels \
+          and not environment.is_end_state():
+        break
+
       if environment.is_end_state():
         self.environment.reset()
         initial_state = []
@@ -289,12 +299,9 @@ class ActorLearnerThread(threading.Thread):
       reward, next_screen = environment.act(action)
 
       initial_state.append(next_screen)
-      if len(initial_state) is self.num_channels \
-          and not environment.is_end_state():
-        break
 
     assert np.shape(initial_state) == (self.num_channels, self.image_height, self.image_width)
-    return initial_state
+    return np.stack(initial_state, axis=-1)
 
 
   def synchronize_network(self):
