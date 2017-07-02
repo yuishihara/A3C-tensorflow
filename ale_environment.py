@@ -27,11 +27,12 @@ import cv2
 
 
 class AleEnvironment(Environment):
-  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True):
+  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True, use_grayscale=True):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.ale.setInt('random_seed', int(np.random.rand() * 100))
     self.ale.setFloat('repeat_action_probability', 0.0)
+    self.ale.setBool('color_averaging', False)
     self.record_display = record_display
     self.show_display = show_display
 
@@ -46,7 +47,12 @@ class AleEnvironment(Environment):
     self.ale.loadROM(rom_name)
     self.actions = self.ale.getMinimalActionSet()
     self.screen_width, self.screen_height = self.ale.getScreenDims()
-    self.screen = np.empty((self.screen_height, self.screen_width, 1), dtype=np.uint8)
+    self.use_grayscale = use_grayscale
+    if self.use_grayscale:
+      self.screen = np.zeros((self.screen_height, self.screen_width, 1), dtype=np.uint8)
+    else:
+      self.screen = np.zeros((self.screen_height, self.screen_width, 3), dtype=np.uint8)
+      self.prev_screen = np.zeros((self.screen_height, self.screen_width, 3), dtype=np.uint8)
     self.shrink = shrink
     self.life_lost_as_end = life_lost_as_end
     self.lives_lost = False
@@ -63,7 +69,14 @@ class AleEnvironment(Environment):
 
   def act(self, action):
     reward = self.ale.act(self.actions[action])
-    screen = self.ale.getScreenGrayscale(self.screen)
+    if self.use_grayscale:
+      screen = self.ale.getScreenGrayscale(self.screen)
+    else:
+      current_screen = self.ale.getScreenRGB(self.screen)
+      screen = np.maximum(current_screen, self.prev_screen)
+      self.prev_screen = current_screen
+      screen = screen[:, :, 0] * 0.299 + screen[:, :, 1] * 0.587 + screen[:, :, 2] * 0.114
+      screen = screen.astype(np.uint8)
     screen = np.reshape(screen, (self.screen_height, self.screen_width, 1))
     state = self.preprocess(screen)
     self.lives_lost = True if self.lives > self.ale.lives() else False
