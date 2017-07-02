@@ -30,7 +30,6 @@ class AleEnvironment(Environment):
   def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
-    self.ale.setInt('frame_skip', 3)
     self.ale.setInt('random_seed', int(np.random.rand() * 100))
     self.ale.setFloat('repeat_action_probability', 0.0)
     self.record_display = record_display

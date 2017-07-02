@@ -146,7 +146,8 @@ class ActorLearnerThread(threading.Thread):
     available_actions = self.environment.available_actions()
     self.environment.reset()
     update_times = 1
-    initial_state = []
+    initial_state = self.get_initial_state(self.environment)
+    last_state = initial_state
     while self.get_global_step() < self.global_t_max:
       if self.thread_id == 0:
         print 'thread_id: %d, learning_rate: %f' % (self.thread_id, self.session.run(self.shared_network.learning_rate))
@@ -155,19 +156,21 @@ class ActorLearnerThread(threading.Thread):
       self.reset_gradients()
       self.synchronize_network()
       self.t_start = self.t
-      if len(initial_state) == 0:
-        initial_state = self.get_initial_state(self.environment)
-      assert np.shape(initial_state) == (84, 84, 4)
 
       if self.loop_listener is not None:
         self.loop_listener(self, update_times)
 
-      history, last_state, initial_state = self.play_game(initial_state)
-
-      if last_state is None:
+      if self.environment.is_end_state():
         # print 'thread_id: %d is now resetting' % self.thread_id
         self.environment.reset()
-        initial_state = []
+        initial_state = self.get_initial_state(self.environment)
+      else:
+        initial_state = last_state
+      assert np.shape(initial_state) == (84, 84, 4)
+
+      history, last_state = self.play_game(initial_state)
+
+      if last_state is None:
         r = 0
       else:
         r = self.session.run(self.value, feed_dict={self.state_input : [last_state]})[0][0]
@@ -186,10 +189,10 @@ class ActorLearnerThread(threading.Thread):
         reward_batch.append([r])
         value_batch.append([value])
 
-      self.accumulate_gradients(states_batch, action_batch, reward_batch, value_batch)
-
-      self.update_shared_gradients()
-      update_times += 1
+      if len(history) is not 0:
+        self.accumulate_gradients(states_batch, action_batch, reward_batch, value_batch)
+        self.update_shared_gradients()
+        update_times += 1
 
 
   def test_run(self, environment, trials):
@@ -225,8 +228,10 @@ class ActorLearnerThread(threading.Thread):
       probabilities, value = self.session.run([self.pi, self.value], feed_dict={self.state_input : [state]})
       action = self.select_action_with(available_actions, probabilities[0])
 
-      intermediate_reward, next_screen = self.environment.act(action)
-      reward = np.clip([intermediate_reward], -1, 1)[0]
+      reward = 0
+      for i in range(self.skip_num):
+        intermediate_reward, next_screen = self.environment.act(action)
+        reward += np.clip([intermediate_reward], -1, 1)[0]
 
       data = {'state':state, 'action':action, 'reward':reward, 'value':value[0][0]}
       history.append(data)
@@ -241,7 +246,7 @@ class ActorLearnerThread(threading.Thread):
       last_state = next_state
 
     # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
-    return history, last_state, next_state
+    return history, last_state
 
 
   def test_play_game(self, environment, initial_state):
@@ -264,8 +269,9 @@ class ActorLearnerThread(threading.Thread):
         random_action_num += 1
       action_num += 1
 
-      reward, next_screen = environment.act(action)
-      total_reward += reward
+      for i in range(self.skip_num):
+        reward, next_screen = environment.act(action)
+        total_reward += reward
 
       next_screen = np.reshape(next_screen, (self.image_width, self.image_height, 1))
       next_state = np.append(state[:, :, 1:], next_screen, axis=-1)
@@ -275,30 +281,15 @@ class ActorLearnerThread(threading.Thread):
 
 
   def get_initial_state(self, environment):
-    initial_state = []
     available_actions = environment.available_actions()
 
-    random_action_num = int(np.random.rand() * 30)
+    random_action_num = np.random.randint(0, 30 + 1)
+    black_screen = np.zeros((self.image_height, self.image_width), dtype=np.uint8)
+    last_screen = black_screen
     for i in range(random_action_num):
-      if environment.is_end_state():
-        self.environment.reset()
-      reward, next_screen = environment.act(0)
-      initial_state.append(next_screen)
+      reward, last_screen = environment.act(0)
 
-    while True:
-      if len(initial_state) is self.num_channels \
-          and not environment.is_end_state():
-        break
-
-      if environment.is_end_state():
-        self.environment.reset()
-        initial_state = []
-
-      next_screen = None
-      action = self.select_random_action_from(available_actions)
-      reward, next_screen = environment.act(action)
-
-      initial_state.append(next_screen)
+    initial_state = [black_screen, black_screen, black_screen, last_screen]
 
     assert np.shape(initial_state) == (self.num_channels, self.image_height, self.image_width)
     return np.stack(initial_state, axis=-1)
