@@ -66,7 +66,7 @@ class ActorLearnerThread(threading.Thread):
       scope_name = "thread_%d_operations" % thread_id
       with tf.name_scope(scope_name):
         log_pi = tf.log(self.pi + self.eps)
-        entropy = tf.reduce_sum(tf.mul(self.pi, log_pi), reduction_indices=1, keep_dims=True)
+        entropy = - tf.reduce_sum(tf.mul(self.pi, log_pi), reduction_indices=1, keep_dims=True)
 
         pi_a_s = tf.reduce_sum(tf.mul(self.pi, self.action_input), reduction_indices=1, keep_dims=True)
         log_pi_a_s = tf.log(pi_a_s)
@@ -74,7 +74,7 @@ class ActorLearnerThread(threading.Thread):
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
         advantage = self.reward_input - self.value_input
-        policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) + tf.reduce_sum(entropy * self.beta)
+        policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) - tf.reduce_sum(entropy * self.beta)
         value_loss = tf.reduce_sum(tf.square(self.reward_input - self.value)) * 0.5
 
         return policy_loss, value_loss
