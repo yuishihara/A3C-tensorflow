@@ -65,11 +65,10 @@ class ActorLearnerThread(threading.Thread):
     with tf.device(self.device):
       scope_name = "thread_%d_operations" % thread_id
       with tf.name_scope(scope_name):
-        log_pi = tf.log(self.pi + self.eps)
+        log_pi = tf.log(tf.clip_by_value(self.pi, self.eps, 1.0))
         entropy = - tf.reduce_sum(tf.mul(self.pi, log_pi), reduction_indices=1, keep_dims=True)
 
-        pi_a_s = tf.reduce_sum(tf.mul(self.pi, self.action_input), reduction_indices=1, keep_dims=True)
-        log_pi_a_s = tf.log(pi_a_s)
+        log_pi_a_s = tf.reduce_sum(tf.mul(log_pi, self.action_input), reduction_indices=1, keep_dims=True)
 
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
