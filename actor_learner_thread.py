@@ -234,6 +234,8 @@ class ActorLearnerThread(threading.Thread):
       for i in range(self.skip_num):
         intermediate_reward, next_screen = self.environment.act(action)
         reward += np.clip([intermediate_reward], -1, 1)[0]
+        if self.environment.is_end_state():
+          break
 
       data = {'state':state, 'action':action, 'reward':reward, 'value':value[0][0]}
       history.append(data)
