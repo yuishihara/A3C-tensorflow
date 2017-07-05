@@ -222,6 +222,9 @@ class ActorLearnerThread(threading.Thread):
     next_state = state
     next_screen = None
     available_actions = self.environment.available_actions()
+    probabilities = None
+    value = None
+    action = None
     while self.environment.is_end_state() == False and (self.t - self.t_start) != self.local_t_max:
       state = next_state
       probabilities, value = self.session.run([self.pi, self.value], feed_dict={self.state_input : [state]})
@@ -244,7 +247,11 @@ class ActorLearnerThread(threading.Thread):
     else:
       last_state = next_state
 
-    # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
+    if self.thread_id == 0:
+      moves = ['no-op', 'start', 'right', 'left']
+      moves = [(move, prob) for move, prob in zip(moves, probabilities[0])]
+      print "probabilities: %s, action: %s, value: %s" % (str(moves), str(moves[action]), str(value))
+      # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
     return history, last_state
 
 
@@ -282,11 +289,12 @@ class ActorLearnerThread(threading.Thread):
   def get_initial_state(self, environment):
     available_actions = environment.available_actions()
 
-    random_action_num = np.random.randint(0, 30 + 1)
+    random_action_num = np.random.randint(0, 30)
     black_screen = np.zeros((self.image_height, self.image_width), dtype=np.uint8)
     last_screen = black_screen
     for i in range(random_action_num):
-      reward, last_screen = environment.act(0)
+      environment.act(0)
+    reward, last_screen = environment.act(1)
 
     initial_state = [black_screen, black_screen, black_screen, last_screen]
 
