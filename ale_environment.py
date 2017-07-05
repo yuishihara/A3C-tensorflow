@@ -94,6 +94,8 @@ class AleEnvironment(Environment):
   def reset(self):
     if self.ale.game_over():
       self.ale.reset_game()
+    self.lives = self.ale.lives()
+    self.lives_lost = False
 
 
   def available_actions(self):
