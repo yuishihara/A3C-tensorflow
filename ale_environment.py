@@ -113,4 +113,5 @@ class AleEnvironment(Environment):
       resized = cv2.resize(screen, (84, 110))
       resized = resized[18:102, :]
 
-    return resized
+    scaled = resized.astype(np.float32) / 255.0
+    return scaled
