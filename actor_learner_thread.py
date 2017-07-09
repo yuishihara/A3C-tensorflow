@@ -21,7 +21,6 @@ class ActorLearnerThread(threading.Thread):
     self.beta = 0.01
     self.gamma = 0.99
     self.grad_clip = 40
-    self.saver = tf.train.Saver({var.name: var for var in self.local_network.weights_and_biases()})
     self.device = device
     self.thread_id = thread_id
 
@@ -66,15 +65,15 @@ class ActorLearnerThread(threading.Thread):
       scope_name = "thread_%d_operations" % thread_id
       with tf.name_scope(scope_name):
         log_pi = tf.log(tf.clip_by_value(self.pi, self.eps, 1.0))
-        entropy = - tf.reduce_sum(tf.mul(self.pi, log_pi), reduction_indices=1, keep_dims=True)
+        entropy = - tf.reduce_sum(tf.mul(self.pi, log_pi))
 
         log_pi_a_s = tf.reduce_sum(tf.mul(log_pi, self.action_input), reduction_indices=1, keep_dims=True)
 
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
         advantage = self.reward_input - self.value_input
-        policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) - tf.reduce_sum(entropy * self.beta)
-        value_loss = tf.reduce_sum(tf.square(self.reward_input - self.value)) * 0.5
+        policy_loss = - tf.reduce_sum(log_pi_a_s * advantage) - entropy * self.beta
+        value_loss = tf.nn.l2_loss(self.reward_input - self.value)
 
         return policy_loss, value_loss
 
@@ -230,12 +229,13 @@ class ActorLearnerThread(threading.Thread):
       probabilities, value = self.session.run([self.pi, self.value], feed_dict={self.state_input : [state]})
       action = self.select_action_with(available_actions, probabilities[0])
 
-      reward = 0
+      reward = 0.0
       for i in range(self.skip_num):
         intermediate_reward, next_screen = self.environment.act(action)
-        reward += np.clip([intermediate_reward], -1, 1)[0]
+        reward += intermediate_reward
         if self.environment.is_end_state():
           break
+      reward = np.clip([reward], -1.0, 1.0)[0]
 
       data = {'state':state, 'action':action, 'reward':reward, 'value':value[0][0]}
       history.append(data)
@@ -325,7 +325,13 @@ class ActorLearnerThread(threading.Thread):
 
 
   def save_parameters(self, file_name, global_step):
+    if saver is None:
+      return
     self.saver.save(self.session, save_path=file_name, global_step=global_step)
+
+
+  def set_saver(self, saver):
+    self.saver = saver
 
 
   def get_global_step(self):
