@@ -137,6 +137,7 @@ if __name__ == '__main__':
     for i in range(FLAGS.threads_num):
       network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, i, device)
       networks.append(network)
+    saver = tf.train.Saver(max_to_keep=None)
 
   with tf.Session(graph=graph, config=config) as session:
     threads = []
@@ -145,6 +146,7 @@ if __name__ == '__main__':
       environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image)
       thread = actor_thread.ActorLearnerThread(session, environment, shared_network,
           networks[thread_num], FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
+      thread.set_saver = saver
       thread.daemon = True
       if thread_num == 0:
         thread.set_loop_listener(loop_listener)
