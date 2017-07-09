@@ -72,6 +72,7 @@ class A3CTest(tf.test.TestCase):
        self.assertTrue(len(probabilities[0]) == test_thread.local_network.actor_outputs)
        self.assertTrue(0.99 < np.sum(probabilities) and np.sum(probabilities) < 1.01)
 
+
   def test_shape(self):
      environment = ale.AleEnvironment('breakout.bin', record_display=False)
      graph = tf.Graph()
@@ -115,30 +116,33 @@ class A3CTest(tf.test.TestCase):
   def test_accumulate_gradients(self):
      environment = ale.AleEnvironment('breakout.bin', record_display=False)
      graph = tf.Graph()
+     local_t_max = 20
+     global_t_max = 100
      with graph.as_default():
-       shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100)
-       network0 = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0)
+       shared_network = shared.SharedNetwork(IMAGE_HEIGHT, IMAGE_WIDTH, NUM_CHANNELS, NUM_ACTIONS, 100, local_t_max, global_t_max)
+       network0 = a3c.A3CNetwork(IMAGE_HEIGHT, IMAGE_WIDTH, NUM_CHANNELS, NUM_ACTIONS, 0)
      with self.test_session(graph = graph) as session:
        tf.initialize_all_variables().run()
-       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, 10, 0)
+       test_thread = actor_thread.ActorLearnerThread(session, environment, shared_network, network0, local_t_max, global_t_max, 0)
        test_thread.reset_gradients()
        initial_state = test_thread.get_initial_state(environment)
-       self.assertEquals(len(initial_state), NUM_CHANNELS)
+       self.assertEquals(np.shape(initial_state), (IMAGE_HEIGHT, IMAGE_WIDTH, NUM_CHANNELS))
 
        history, last_state = test_thread.play_game(initial_state)
 
        session.run(test_thread.reset_local_grads_ops)
        local_grad = test_thread.local_grads[0]
 
-       r = 0
+       r = 0.0
        gamma = 0.99
        for i in range((test_thread.t - 1) - test_thread.t_start, -1, -1):
          state = history[i]['state']
          action = np.zeros(test_thread.local_network.actor_outputs)
          action[history[i]['action']] = 1
          reward = history[i]['reward']
+         value = history[i]['value']
          r = reward + gamma * r
-         test_thread.accumulate_gradients([state], [action], [[reward]])
+         test_thread.accumulate_gradients([state], [action], [[r]], [[value]])
          local_grad_step = local_grad.eval()
          tf.Print(local_grad_step, [local_grad_step]).eval()
 
@@ -148,18 +152,21 @@ class A3CTest(tf.test.TestCase):
        states_batch = []
        action_batch = []
        r_batch = []
+       value_batch = []
        for i in range((test_thread.t - 1) - test_thread.t_start, -1, -1):
          state = history[i]['state']
          action = np.zeros(test_thread.local_network.actor_outputs)
          action[history[i]['action']] = 1
          reward = history[i]['reward']
+         value = history[i]['value']
 
          r = reward + gamma * r
          states_batch.append(state)
          action_batch.append(action)
          r_batch.append([r])
+         value_batch.append([value])
 
-       test_thread.accumulate_gradients(states_batch, action_batch, r_batch)
+       test_thread.accumulate_gradients(states_batch, action_batch, r_batch, value_batch)
        local_grad_batch = local_grad.eval()
        tf.Print(local_grad_batch, [local_grad_batch]).eval()
 
