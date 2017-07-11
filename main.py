@@ -27,8 +27,8 @@ gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
 gflags.DEFINE_boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
 
-checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
-summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
 
 def merged_summaries(maximum, median, average):
   max_summary = tf.scalar_summary('rewards max', maximum)
@@ -58,6 +58,10 @@ def loop_listener(thread, iteration):
   previous_time = current_time
   previous_step = current_step
   if STEPS_PER_EPOCH < (current_step - previous_evaluation_step):
+    step = thread.get_global_step()
+    print 'Save network parameters! step: %d' % step
+    thread.save_parameters(checkpoint_dir + '/network_parameters', step)
+
     previous_evaluation_step = current_step
     trials = 10
     rewards = thread.test_run(evaluation_environment, trials)
@@ -69,11 +73,6 @@ def loop_listener(thread, iteration):
       feed_dict={maximum_input: maximum, median_input: median, average_input: average}),
       epoch)
     print 'test run for epoch: %d. max: %d, med: %d, avg: %f' % (epoch, maximum, median, average)
-
-    step = thread.get_global_step()
-    print 'Save network parameters! step: %d' % step
-
-    thread.save_parameters(checkpoint_dir + '/network_parameters', step)
 
 
 def create_dir_if_not_exist(directory):
@@ -146,7 +145,7 @@ if __name__ == '__main__':
       environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image)
       thread = actor_thread.ActorLearnerThread(session, environment, shared_network,
           networks[thread_num], FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
-      thread.set_saver = saver
+      thread.set_saver(saver)
       thread.daemon = True
       if thread_num == 0:
         thread.set_loop_listener(loop_listener)

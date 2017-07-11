@@ -325,7 +325,7 @@ class ActorLearnerThread(threading.Thread):
 
 
   def save_parameters(self, file_name, global_step):
-    if saver is None:
+    if self.saver is None:
       return
     self.saver.save(self.session, save_path=file_name, global_step=global_step)
 

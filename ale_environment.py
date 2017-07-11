@@ -27,7 +27,7 @@ import cv2
 
 
 class AleEnvironment(Environment):
-  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True, use_grayscale=False):
+  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True, use_grayscale=True):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.ale.setInt('random_seed', int(np.random.rand() * 100))
