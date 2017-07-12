@@ -20,15 +20,15 @@ FLAGS = gflags.FLAGS
 gflags.DEFINE_string('summary_dir', 'summary', 'Target summary directory')
 gflags.DEFINE_string('checkpoint_dir', 'checkpoint', 'Target checkpoint directory')
 gflags.DEFINE_string('rom', 'breakout.bin', 'Rom name to play')
+gflags.DEFINE_string('trained_file', '', 'File to restore the network')
 gflags.DEFINE_integer('threads_num', 8, 'Threads to create')
 gflags.DEFINE_integer('local_t_max', 5, 'batch size to use for training')
 gflags.DEFINE_integer('global_t_max', 1e8, 'Max steps')
 gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
 gflags.DEFINE_boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
+gflags.DEFINE_boolean('evaluate', False, 'Evaluate trained network')
 
-checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
-summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
 
 def merged_summaries(maximum, median, average):
   max_summary = tf.scalar_summary('rewards max', maximum)
@@ -42,12 +42,19 @@ previous_step = 0
 previous_evaluation_step = 0
 evaluation_environment = ale.AleEnvironment(FLAGS.rom, record_display=False,
     show_display=True, id=100, shrink=FLAGS.shrink_image, life_lost_as_end=False)
+summary_writer = None
+summary_op = None
 def loop_listener(thread, iteration):
   global previous_time
   global previous_step
   global previous_evaluation_step
-  global checkpoint_dir
-  STEPS_PER_EPOCH = 1000000
+  global maximum_input
+  global median_input
+  global average_input
+  global summary_writer
+  global summary_op
+  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+  STEPS_PER_EPOCH = 1000
   current_time = time.time()
   current_step = thread.get_global_step()
   elapsed_time = current_time - previous_time
@@ -69,7 +76,7 @@ def loop_listener(thread, iteration):
     median = np.median(rewards)
     average = np.average(rewards)
     epoch = current_step / STEPS_PER_EPOCH
-    summary_writer.add_summary(session.run(summary_op,
+    summary_writer.add_summary(thread.session.run(summary_op,
       feed_dict={maximum_input: maximum, median_input: median, average_input: average}),
       epoch)
     print 'test run for epoch: %d. max: %d, med: %d, avg: %f' % (epoch, maximum, median, average)
@@ -99,26 +106,26 @@ def write_training_settings(directory):
       line = f.write(flag + '\n')
 
 
-if __name__ == '__main__':
-  try:
-    argv = FLAGS(sys.argv)
-  except gflags.FlagsError:
-    print 'Incompatible flags were specified'
-
-  os.environ['OMP_NUM_THREADS'] = '1'
-
+def start_training():
+  global summary_writer
+  global summary_op
+  global maximum_input
+  global median_input
+  global average_input
+  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+  summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
   graph = tf.Graph()
   config = tf.ConfigProto()
 
   # Output to tensorboard
   create_dir_if_not_exist(summary_dir)
-  remove_old_files(summary_dir)
-  summary_writer = tf.train.SummaryWriter(summary_dir, graph=graph)
-
   # Model parameter saving
   create_dir_if_not_exist(checkpoint_dir)
-  remove_old_files(checkpoint_dir)
+  if FLAGS.trained_file is '':
+    remove_old_files(summary_dir)
+    remove_old_files(checkpoint_dir)
 
+  summary_writer = tf.train.SummaryWriter(summary_dir, graph=graph)
   write_training_settings(RESULT_DIRECTORY_NAME)
 
   networks = []
@@ -138,6 +145,7 @@ if __name__ == '__main__':
       networks.append(network)
     saver = tf.train.Saver(max_to_keep=None)
 
+
   with tf.Session(graph=graph, config=config) as session:
     threads = []
     for thread_num in range(FLAGS.threads_num):
@@ -152,6 +160,10 @@ if __name__ == '__main__':
       threads.append(thread)
 
     session.run(tf.initialize_all_variables())
+    if FLAGS.trained_file is not '':
+      saver.restore(session, checkpoint_dir + '/' + FLAGS.trained_file)
+    else:
+      print 'No trained file specified. Use default parameter'
 
     for i in range(FLAGS.threads_num):
       threads[i].start()
@@ -166,3 +178,58 @@ if __name__ == '__main__':
         break
 
     print 'Training finished!!'
+
+
+def start_evaluation():
+  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+  graph = tf.Graph()
+  config = tf.ConfigProto()
+
+  shared_network = None
+  evaluation_network = None
+
+  with graph.as_default():
+    device = '/gpu:0' if FLAGS.use_gpu else '/cpu:0'
+    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100,
+        FLAGS.local_t_max, FLAGS.global_t_max, device)
+    evaluation_network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0, device)
+    saver = tf.train.Saver(max_to_keep=None)
+
+  with tf.Session(graph=graph, config=config) as session:
+    show_display = True
+    thread_num = 0
+    environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image)
+    thread = actor_thread.ActorLearnerThread(session, environment, shared_network, evaluation_network, FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
+    thread.set_saver(saver)
+    thread.daemon = True
+
+    session.run(tf.initialize_all_variables())
+
+    if FLAGS.trained_file is not '':
+      saver.restore(session, checkpoint_dir + '/' + FLAGS.trained_file)
+    else:
+      print 'No trained file specified. Abort evaluation'
+      return
+
+    trials = 10
+    rewards = thread.test_run(environment, trials)
+
+    maximum = np.max(rewards)
+    median = np.median(rewards)
+    average = np.average(rewards)
+
+    print 'Evaluation finished. max: %d, med: %d, avg: %f' % (maximum, median, average)
+
+
+if __name__ == '__main__':
+  try:
+    argv = FLAGS(sys.argv)
+  except gflags.FlagsError:
+    print 'Incompatible flags were specified'
+
+  os.environ['OMP_NUM_THREADS'] = '1'
+
+  if FLAGS.evaluate == True:
+    start_evaluation()
+  else:
+    start_training()
