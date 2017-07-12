@@ -54,7 +54,7 @@ def loop_listener(thread, iteration):
   global summary_writer
   global summary_op
   checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
-  STEPS_PER_EPOCH = 1000
+  STEPS_PER_EPOCH = 1000000
   current_time = time.time()
   current_step = thread.get_global_step()
   elapsed_time = current_time - previous_time
