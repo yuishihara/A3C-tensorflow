@@ -5,8 +5,9 @@
 *.swo
 *.swp
 
-# avoid log directories
+# exclude directories
 results/
+movie/
 
 # ignore ale binaries
 *.bin
