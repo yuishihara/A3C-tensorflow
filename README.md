@@ -1,7 +1,7 @@
 # DQN-tensorflow
 Implementation of [A3C](https://arxiv.org/pdf/1602.01783.pdf) using TensorFlow v0.9(But it is easy to modify and run it on higher versions)
 
-[A3C FF Breakout](https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.gif)
+![A3C FF Breakout](https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.gif)
 
 ## Prerequisitss
 From [Here](https://github.com/yuishihara/Arcade-Learning-Environment/tree/multi_thread), clone multi thread supported arcade learning environment.
