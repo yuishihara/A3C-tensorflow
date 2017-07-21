@@ -107,6 +107,8 @@ def write_training_settings(directory):
 
 
 def start_training():
+  global previous_evaluation_step
+  global previous_step
   global summary_writer
   global summary_op
   global maximum_input
@@ -162,6 +164,8 @@ def start_training():
     session.run(tf.initialize_all_variables())
     if FLAGS.trained_file is not '':
       saver.restore(session, checkpoint_dir + '/' + FLAGS.trained_file)
+      previous_step = threads[0].get_global_step()
+      previous_evaluation_step = previous_step
     else:
       print 'No trained file specified. Use default parameter'
 
