@@ -217,7 +217,10 @@ def start_evaluation():
       return
 
     trials = 10
-    rewards = thread.test_run(environment, trials)
+    rewards = []
+    for i in range(trials):
+      reward = thread.test_run(environment)
+      rewards.append(reward)
 
     maximum = np.max(rewards)
     median = np.median(rewards)

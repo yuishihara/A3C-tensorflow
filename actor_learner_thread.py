@@ -193,16 +193,13 @@ class ActorLearnerThread(threading.Thread):
         update_times += 1
 
 
-  def test_run(self, environment, trials):
-    rewards = []
-    for i in range(trials):
-      initial_state = self.get_initial_state(environment)
-      assert np.shape(initial_state) == (84, 84, 4)
-      reward = self.test_play_game(environment, initial_state)
-      print 'test play trial: %d finished. total reward: %d' % (i, reward)
-      rewards.append(reward)
-      environment.reset()
-    return rewards
+  def test_run(self, environment):
+    environment.reset()
+    initial_state = self.get_initial_state(environment)
+    assert np.shape(initial_state) == (84, 84, 4)
+    reward = self.test_play_game(environment, initial_state)
+    print 'test play finished. total reward: %d' % (reward)
+    return reward
 
 
   def extract_history(self, history):
