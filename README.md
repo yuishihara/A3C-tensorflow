@@ -3,7 +3,7 @@ Implementation of [A3C](https://arxiv.org/pdf/1602.01783.pdf) using TensorFlow v
 
 ![A3C FF Breakout](https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.gif)
 
-## Prerequisitss
+## Prerequisites
 From [Here](https://github.com/yuishihara/Arcade-Learning-Environment/tree/multi_thread), clone multi thread supported arcade learning environment.
 make and install it. Modifications to ale is necessary to avoid multi thread problems
 
