@@ -37,7 +37,7 @@ class AleEnvironment(Environment):
     self.show_display = show_display
 
     if self.record_display:
-      self.ale.setBool('display_screen', False)
+      self.ale.setBool('display_screen', True)
       self.ale.setString('record_screen_dir', 'movie')
     elif self.show_display:
       self.display_name = rom_name + '_' + str(id)
