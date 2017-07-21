@@ -2,7 +2,6 @@ from constants import IMAGE_WIDTH
 from constants import IMAGE_HEIGHT
 from constants import NUM_CHANNELS
 from constants import NUM_ACTIONS
-from constants import RESULT_DIRECTORY_NAME
 
 import gflags
 import sys
@@ -17,8 +16,8 @@ import actor_learner_thread as actor_thread
 import ale_environment as ale
 
 FLAGS = gflags.FLAGS
-gflags.DEFINE_string('summary_dir', 'summary', 'Target summary directory')
-gflags.DEFINE_string('checkpoint_dir', 'checkpoint', 'Target checkpoint directory')
+gflags.DEFINE_string('summary_dir', 'results/summary', 'Target summary directory')
+gflags.DEFINE_string('checkpoint_dir', 'results/checkpoint', 'Target checkpoint directory')
 gflags.DEFINE_string('rom', 'breakout.bin', 'Rom name to play')
 gflags.DEFINE_string('trained_file', '', 'File to restore the network')
 gflags.DEFINE_integer('threads_num', 8, 'Threads to create')
@@ -54,7 +53,7 @@ def loop_listener(thread, iteration):
   global average_input
   global summary_writer
   global summary_op
-  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+  checkpoint_dir = FLAGS.checkpoint_dir
   STEPS_PER_EPOCH = 1000000
   current_time = time.time()
   current_step = thread.get_global_step()
@@ -115,8 +114,8 @@ def start_training():
   global maximum_input
   global median_input
   global average_input
-  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
-  summary_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.summary_dir)
+  checkpoint_dir = FLAGS.checkpoint_dir
+  summary_dir = FLAGS.summary_dir
   graph = tf.Graph()
   config = tf.ConfigProto()
 
@@ -129,7 +128,7 @@ def start_training():
     remove_old_files(checkpoint_dir)
 
   summary_writer = tf.train.SummaryWriter(summary_dir, graph=graph)
-  write_training_settings(RESULT_DIRECTORY_NAME)
+  write_training_settings('results')
 
   networks = []
   shared_network = None
@@ -186,7 +185,7 @@ def start_training():
 
 
 def start_evaluation():
-  checkpoint_dir = os.path.join(RESULT_DIRECTORY_NAME,  FLAGS.checkpoint_dir)
+  checkpoint_dir = FLAGS.checkpoint_dir
   graph = tf.Graph()
   config = tf.ConfigProto()
 

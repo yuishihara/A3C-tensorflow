@@ -20,6 +20,7 @@ There are several options to change learning parameters and behaviors.
 - use_gpu: Whether to use gpu or cpu. Defaults to True. To use cpu set it to False.
 - shrink_image: Whether to just shrink or trim and shrink state image. Defaults to False.
 - life_lost_as_end: Treat life lost in the game as end of state. Defaults to True.
+- evaluate: Evaluate trained network. Defaults to False.
 
 Options can be used like follows
 
@@ -30,6 +31,12 @@ $ python main.py --rom="pong.bin" --threads_num=4
 ## Results
 
 TBD
+
+### To load trained network
+
+```sh
+$ python main.py --evaluate=True --checkpoint_dir=trained_results/breakout/ --trained_file=network_parameters-80002500
+```
 
 ## License
 MIT
