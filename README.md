@@ -1,6 +1,8 @@
 # DQN-tensorflow
 Implementation of [A3C](https://arxiv.org/pdf/1602.01783.pdf) using TensorFlow v0.9(But it is easy to modify and run it on higher versions)
 
+[A3C FF Breakout](https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.gif)
+
 ## Prerequisitss
 From [Here](https://github.com/yuishihara/Arcade-Learning-Environment/tree/multi_thread), clone multi thread supported arcade learning environment.
 make and install it. Modifications to ale is necessary to avoid multi thread problems
@@ -30,9 +32,13 @@ $ python main.py --rom="pong.bin" --threads_num=4
 
 ## Results
 
-TBD
+### A3C-FF breakout
 
-### To load trained network
+The result trained for 80 Million steps with 8 threads. It took about 40 hours with 8 core Ryzen 1800X.
+
+<img src="https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.png" width="400">
+
+### To load and watch trained network result
 
 ```sh
 $ python main.py --evaluate=True --checkpoint_dir=trained_results/breakout/ --trained_file=network_parameters-80002500
