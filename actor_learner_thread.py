@@ -198,7 +198,6 @@ class ActorLearnerThread(threading.Thread):
     for i in range(trials):
       initial_state = self.get_initial_state(environment)
       assert np.shape(initial_state) == (84, 84, 4)
-      print 'test play trial: %d started!!' % i
       reward = self.test_play_game(environment, initial_state)
       print 'test play trial: %d finished. total reward: %d' % (i, reward)
       rewards.append(reward)

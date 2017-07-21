@@ -27,7 +27,7 @@ import cv2
 
 
 class AleEnvironment(Environment):
-  def __init__(self, rom_name, record_display=True, show_display=False, id = 0, shrink=False, life_lost_as_end=True, use_grayscale=True):
+  def __init__(self, rom_name, record_display=False, show_display=False, id = 0, shrink=False, life_lost_as_end=True, use_grayscale=True):
     super(AleEnvironment, self).__init__()
     self.ale = ALEInterface()
     self.ale.setInt('random_seed', int(np.random.rand() * 100))
@@ -104,7 +104,7 @@ class AleEnvironment(Environment):
 
 
   def preprocess(self, screen):
-    if self.show_display:
+    if self.show_display and not self.record_display:
       cv2.imshow(self.display_name, screen)
 
     if self.shrink:

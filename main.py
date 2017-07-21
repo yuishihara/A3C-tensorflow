@@ -28,6 +28,7 @@ gflags.DEFINE_boolean('use_gpu', True, 'True to use gpu, False to use cpu')
 gflags.DEFINE_boolean('shrink_image', False, 'Just shrink image for preprocessing')
 gflags.DEFINE_boolean('life_lost_as_end', True, 'Treat live lost as end of episode')
 gflags.DEFINE_boolean('evaluate', False, 'Evaluate trained network')
+gflags.DEFINE_boolean('take_video', False, 'Take video for during evaluation')
 
 
 def merged_summaries(maximum, median, average):
@@ -202,7 +203,7 @@ def start_evaluation():
   with tf.Session(graph=graph, config=config) as session:
     show_display = True
     thread_num = 0
-    environment = ale.AleEnvironment(FLAGS.rom, record_display=False, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image)
+    environment = ale.AleEnvironment(FLAGS.rom, record_display=FLAGS.take_video, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image, life_lost_as_end=False)
     thread = actor_thread.ActorLearnerThread(session, environment, shared_network, evaluation_network, FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
     thread.set_saver(saver)
     thread.daemon = True
