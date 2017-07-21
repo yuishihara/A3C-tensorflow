@@ -1,4 +1,4 @@
-# DQN-tensorflow
+# A3C-tensorflow
 Implementation of [A3C](https://arxiv.org/pdf/1602.01783.pdf) using TensorFlow v0.9(But it is easy to modify and run it on higher versions)
 
 ![A3C FF Breakout](https://raw.githubusercontent.com/yuishihara/A3C-tensorflow/master/trained_results/breakout/breakout_result.gif)
