@@ -1,7 +1,6 @@
 from constants import IMAGE_WIDTH
 from constants import IMAGE_HEIGHT
 from constants import NUM_CHANNELS
-from constants import NUM_ACTIONS
 
 import gflags
 import sys
@@ -40,8 +39,7 @@ def merged_summaries(maximum, median, average):
 previous_time = time.time()
 previous_step = 0
 previous_evaluation_step = 0
-evaluation_environment = ale.AleEnvironment(FLAGS.rom, record_display=False,
-    show_display=True, id=100, shrink=FLAGS.shrink_image, life_lost_as_end=False)
+evaluation_environment = None
 summary_writer = None
 summary_op = None
 def loop_listener(thread, iteration):
@@ -53,8 +51,9 @@ def loop_listener(thread, iteration):
   global average_input
   global summary_writer
   global summary_op
+  global evaluation_environment
   checkpoint_dir = FLAGS.checkpoint_dir
-  STEPS_PER_EPOCH = 1000000
+  STEPS_PER_EPOCH = 100
   current_time = time.time()
   current_step = thread.get_global_step()
   elapsed_time = current_time - previous_time
@@ -71,7 +70,10 @@ def loop_listener(thread, iteration):
 
     previous_evaluation_step = current_step
     trials = 10
-    rewards = thread.test_run(evaluation_environment, trials)
+    rewards = []
+    for i in range(trials):
+      reward = thread.test_run(evaluation_environment)
+      rewards.append(reward)
     maximum = np.max(rewards)
     median = np.median(rewards)
     average = np.average(rewards)
@@ -114,6 +116,7 @@ def start_training():
   global maximum_input
   global median_input
   global average_input
+  global evaluation_environment
   checkpoint_dir = FLAGS.checkpoint_dir
   summary_dir = FLAGS.summary_dir
   graph = tf.Graph()
@@ -134,16 +137,20 @@ def start_training():
   shared_network = None
   summary_op = None
 
+  evaluation_environment = ale.AleEnvironment(FLAGS.rom, record_display=False,
+    show_display=True, id=100, shrink=FLAGS.shrink_image, life_lost_as_end=False)
+
   with graph.as_default():
+    num_actions = len(evaluation_environment.available_actions())
     maximum_input = tf.placeholder(tf.int32)
     median_input = tf.placeholder(tf.int32)
     average_input = tf.placeholder(tf.int32)
     summary_op = merged_summaries(maximum_input, median_input, average_input)
     device = '/gpu:0' if FLAGS.use_gpu else '/cpu:0'
-    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100,
+    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, num_actions, 100,
         FLAGS.local_t_max, FLAGS.global_t_max, device)
     for i in range(FLAGS.threads_num):
-      network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, i, device)
+      network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, num_actions, i, device)
       networks.append(network)
     saver = tf.train.Saver(max_to_keep=None)
 
@@ -175,6 +182,8 @@ def start_training():
     while True:
       try:
         ts = [thread.join(10) for thread in threads if thread is not None and thread.isAlive()]
+        if len(ts) == 0:
+          break
       except KeyboardInterrupt:
         print 'Ctrl-c received! Sending kill to threads...'
         for thread in threads:
@@ -191,18 +200,19 @@ def start_evaluation():
 
   shared_network = None
   evaluation_network = None
+  environment = ale.AleEnvironment(FLAGS.rom, record_display=FLAGS.take_video, show_display=show_display, id=0, shrink=FLAGS.shrink_image, life_lost_as_end=False)
 
   with graph.as_default():
+    num_actions = len(environment.available_actions())
     device = '/gpu:0' if FLAGS.use_gpu else '/cpu:0'
-    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 100,
+    shared_network = shared.SharedNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, num_actions, 100,
         FLAGS.local_t_max, FLAGS.global_t_max, device)
-    evaluation_network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, NUM_ACTIONS, 0, device)
+    evaluation_network = a3c.A3CNetwork(IMAGE_WIDTH, IMAGE_HEIGHT, NUM_CHANNELS, num_actions, 0, device)
     saver = tf.train.Saver(max_to_keep=None)
 
   with tf.Session(graph=graph, config=config) as session:
     show_display = True
     thread_num = 0
-    environment = ale.AleEnvironment(FLAGS.rom, record_display=FLAGS.take_video, show_display=show_display, id=thread_num, shrink=FLAGS.shrink_image, life_lost_as_end=False)
     thread = actor_thread.ActorLearnerThread(session, environment, shared_network, evaluation_network, FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
     thread.set_saver(saver)
     thread.daemon = True

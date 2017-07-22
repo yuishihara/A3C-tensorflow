@@ -15,6 +15,7 @@ class ActorLearnerThread(threading.Thread):
     self.image_width = local_network.input_shape()[0]
     self.image_height = local_network.input_shape()[1]
     self.num_channels = local_network.input_shape()[2]
+    self.num_actions = len(environment.available_actions())
     self.loop_listener = None
     self.skip_num = 4
     self.eps = 1e-10
@@ -47,7 +48,7 @@ class ActorLearnerThread(threading.Thread):
       state_input = tf.placeholder(tf.float32, shape=state_shape, name="state_input")
 
       action_shape=[None] + list(self.local_network.actor_output_shape())
-      assert action_shape == [None, 4]
+      assert action_shape == [None, self.num_actions]
       action_input = tf.placeholder(tf.float32, shape=action_shape, name="action_input")
 
       reward_shape=[None] + list(self.local_network.critic_output_shape())
@@ -245,11 +246,6 @@ class ActorLearnerThread(threading.Thread):
     else:
       last_state = next_state
 
-    if self.thread_id == 0:
-      moves = ['no-op', 'start', 'right', 'left']
-      moves = [(move, prob) for move, prob in zip(moves, probabilities[0])]
-      print "probabilities: %s, action: %s, value: %s" % (str(moves), str(moves[action]), str(value))
-      # print 'self.t_start: %d, self.t: %d' % (self.t_start, self.t)
     return history, last_state
 
 
