@@ -34,8 +34,10 @@ gflags.DEFINE_string('xlabel', 'million steps', 'Label for x-axis')
 gflags.DEFINE_string('ylabel', 'score', 'Label for y-axis')
 gflags.DEFINE_string('legend_pos', 'upper left', 'Legend position')
 gflags.DEFINE_string('name', '', 'file name of png to save')
-gflags.DEFINE_integer('xlim', 80, 'x-axis limit')
-gflags.DEFINE_integer('ylim', 1000, 'y-axis limit')
+gflags.DEFINE_integer('xplim', 80, 'x-axis positive limit')
+gflags.DEFINE_integer('yplim', 1000, 'y-axis positive limit')
+gflags.DEFINE_integer('xnlim', 0, 'x-axis negative limit')
+gflags.DEFINE_integer('ynlim', 0, 'y-axis negative limit')
 
 def load_data(directory, file_name):
   full_path = os.path.join(directory, file_name)
@@ -63,8 +65,8 @@ if __name__=='__main__':
   plt.plot(x, avg_y, label='average', linewidth=1)
 
   plt.legend(loc=FLAGS.legend_pos, fontsize=8)
-  plt.xlim(0, FLAGS.xlim)
-  plt.ylim(0, FLAGS.ylim)
+  plt.xlim(FLAGS.xnlim, FLAGS.xplim)
+  plt.ylim(FLAGS.ynlim, FLAGS.yplim)
 
   current_datetime = dt.now()
   title = FLAGS.title if FLAGS.title is not '' else current_datetime.strftime('%Y/%m/%d')
