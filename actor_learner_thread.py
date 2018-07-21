@@ -66,9 +66,9 @@ class ActorLearnerThread(threading.Thread):
       scope_name = "thread_%d_operations" % thread_id
       with tf.name_scope(scope_name):
         log_pi = tf.log(tf.clip_by_value(self.pi, self.eps, 1.0))
-        entropy = - tf.reduce_sum(tf.mul(self.pi, log_pi))
+        entropy = - tf.reduce_sum(tf.multiply(self.pi, log_pi))
 
-        log_pi_a_s = tf.reduce_sum(tf.mul(log_pi, self.action_input), reduction_indices=1, keep_dims=True)
+        log_pi_a_s = tf.reduce_sum(tf.multiply(log_pi, self.action_input), reduction_indices=1, keep_dims=True)
 
         # log_pi_a_s * advantage. This multiplication is bigger then better
         # append minus to use gradient descent as gradient ascent
@@ -87,7 +87,7 @@ class ActorLearnerThread(threading.Thread):
         name = variable.name.replace(":", "_") + "_local_grad"
         shape = variable.get_shape().as_list()
         local_grad = tf.Variable(tf.zeros(shape, dtype=variable.dtype), name=name, trainable=False)
-        local_grads.append(local_grad.ref())
+        local_grads.append(local_grad)
     assert len(local_grads) == 10
     return local_grads
 
@@ -97,7 +97,7 @@ class ActorLearnerThread(threading.Thread):
     accum_grad_ops = []
     with tf.device(self.device):
       with tf.name_scope(scope_name):
-        dxs = [v.ref() for v in self.local_network.weights_and_biases()]
+        dxs = [v for v in self.local_network.weights_and_biases()]
         grads = tf.gradients(dy, dxs,
             gate_gradients=False,
             aggregation_method=None,
@@ -150,7 +150,7 @@ class ActorLearnerThread(threading.Thread):
     while self.get_global_step() < self.global_t_max:
       if self.thread_id == 0:
         print 'thread_id: %d, learning_rate: %f' % (self.thread_id, self.session.run(self.shared_network.learning_rate))
-        print 'global_step %d' % self.session.run(self.shared_network.shared_counter.ref())
+        print 'global_step %d' % self.session.run(self.shared_network.shared_counter.read_value())
 
       self.reset_gradients()
       self.synchronize_network()

@@ -53,7 +53,7 @@ def loop_listener(thread, iteration):
   global summary_op
   global evaluation_environment
   checkpoint_dir = FLAGS.checkpoint_dir
-  STEPS_PER_EPOCH = 100
+  STEPS_PER_EPOCH = 1000000
   current_time = time.time()
   current_step = thread.get_global_step()
   elapsed_time = current_time - previous_time
@@ -200,6 +200,7 @@ def start_evaluation():
 
   shared_network = None
   evaluation_network = None
+  show_display = True
   environment = ale.AleEnvironment(FLAGS.rom, record_display=FLAGS.take_video, show_display=show_display, id=0, shrink=FLAGS.shrink_image, life_lost_as_end=False)
 
   with graph.as_default():
@@ -211,7 +212,6 @@ def start_evaluation():
     saver = tf.train.Saver(max_to_keep=None)
 
   with tf.Session(graph=graph, config=config) as session:
-    show_display = True
     thread_num = 0
     thread = actor_thread.ActorLearnerThread(session, environment, shared_network, evaluation_network, FLAGS.local_t_max, FLAGS.global_t_max, thread_num)
     thread.set_saver(saver)

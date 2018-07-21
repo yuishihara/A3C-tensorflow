@@ -51,7 +51,7 @@ class SharedNetwork(A3CNetwork):
 
 
   def learning_rate(self):
-    return self.eta * (1.0 - self.shared_counter.ref() * self.local_t_max / self.global_t_max)
+    return self.eta * (1.0 - self.shared_counter.read_value() * self.local_t_max / self.global_t_max)
 
 
   def prepare_shared_counter(self):
