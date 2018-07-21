@@ -30,10 +30,10 @@ gflags.DEFINE_boolean('take_video', False, 'Take video for during evaluation')
 
 
 def merged_summaries(maximum, median, average):
-  max_summary = tf.scalar_summary('rewards max', maximum)
-  med_summary = tf.scalar_summary('rewards med', median)
-  avg_summary = tf.scalar_summary('rewards avg', average)
-  return tf.merge_summary([max_summary, med_summary, avg_summary])
+  max_summary = tf.summary.scalar('rewards max', maximum)
+  med_summary = tf.summary.scalar('rewards med', median)
+  avg_summary = tf.summary.scalar('rewards avg', average)
+  return tf.summary.merge([max_summary, med_summary, avg_summary])
 
 
 previous_time = time.time()
@@ -130,7 +130,7 @@ def start_training():
     remove_old_files(summary_dir)
     remove_old_files(checkpoint_dir)
 
-  summary_writer = tf.train.SummaryWriter(summary_dir, graph=graph)
+  summary_writer = tf.summary.FileWriter(summary_dir, graph=graph)
   write_training_settings('results')
 
   networks = []
